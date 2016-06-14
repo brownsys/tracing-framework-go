@@ -1,5 +1,3 @@
-// +build !context
-
 package main
 
 import (
