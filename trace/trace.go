@@ -2,29 +2,21 @@ package trace
 
 import (
 	"fmt"
-	"local/research/baggage"
 	"reflect"
 	"runtime"
 
 	"golang.org/x/net/context"
 
+	"github.com/brownsys/tracing-framework-go/trace/baggage"
 	"github.com/brownsys/tracing-framework-go/trace/internal/instrument"
 )
 
-func GetArgTypes(f interface{}) (args []reflect.Type, variadic, ok bool) {
-	return GetArgTypesName(interfaceToName(f, "GetArgTypes"))
+func GetType(f interface{}) (typ reflect.Type, ok bool) {
+	return instrument.GetType(f)
 }
 
-func GetArgTypesName(fname string) (args []reflect.Type, variadic, ok bool) {
-	typ, ok := instrument.GetTypeName(fname)
-	if !ok {
-		return nil, false, false
-	}
-	args = make([]reflect.Type, typ.NumIn())
-	for i := 0; i < typ.NumIn(); i++ {
-		args[i] = typ.In(i)
-	}
-	return args, typ.IsVariadic(), true
+func GetTypeName(fname string) (typ reflect.Type, ok bool) {
+	return instrument.GetTypeName(fname)
 }
 
 func Instrument(f interface{}, callback func(bag interface{}, args []reflect.Value)) {
@@ -34,7 +26,8 @@ func Instrument(f interface{}, callback func(bag interface{}, args []reflect.Val
 func InstrumentName(fname string, callback func(bag interface{}, args []reflect.Value)) {
 	typ, _ := instrument.GetTypeName(fname)
 	f := func(args []reflect.Value) []reflect.Value {
-		callback(args[0].Interface().(context.Context).Value(baggage.ContextKey), args[1:])
+		bag := runtime.GetLocal().(context.Context).Value(baggage.ContextKey)
+		callback(bag, args)
 		return nil
 	}
 	instrument.InstrumentName(fname, reflect.MakeFunc(typ, f).Interface())
