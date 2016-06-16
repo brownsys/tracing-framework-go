@@ -7,7 +7,6 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/brownsys/tracing-framework-go/trace/baggage"
 	"github.com/brownsys/tracing-framework-go/trace/internal/instrument"
 )
 
@@ -19,15 +18,18 @@ func GetTypeName(fname string) (typ reflect.Type, ok bool) {
 	return instrument.GetTypeName(fname)
 }
 
-func Instrument(f interface{}, callback func(bag interface{}, args []reflect.Value)) {
+func Instrument(f interface{}, callback func(ctx context.Context, args []reflect.Value)) {
 	InstrumentName(interfaceToName(f, "Instrument"), callback)
 }
 
-func InstrumentName(fname string, callback func(bag interface{}, args []reflect.Value)) {
+func InstrumentName(fname string, callback func(ctx context.Context, args []reflect.Value)) {
 	typ, _ := instrument.GetTypeName(fname)
 	f := func(args []reflect.Value) []reflect.Value {
-		bag := runtime.GetLocal().(context.Context).Value(baggage.ContextKey)
-		callback(bag, args)
+		var ctx context.Context
+		if c := runtime.GetLocal(); c != nil {
+			ctx = c.(context.Context)
+		}
+		callback(ctx, args)
 		return nil
 	}
 	instrument.InstrumentName(fname, reflect.MakeFunc(typ, f).Interface())
