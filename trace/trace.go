@@ -27,14 +27,6 @@ func GetArgTypesName(fname string) (args []reflect.Type, variadic, ok bool) {
 	return args, typ.IsVariadic(), true
 }
 
-func getArgsFromType(typ reflect.Type) ([]reflect.Type, bool) {
-	args := make([]reflect.Type, typ.NumIn())
-	for i := 0; i < typ.NumIn(); i++ {
-		args[i] = typ.In(i)
-	}
-	return args, typ.IsVariadic()
-}
-
 func Instrument(f interface{}, callback func(bag interface{}, args []reflect.Value)) {
 	InstrumentName(interfaceToName(f, "Instrument"), callback)
 }
