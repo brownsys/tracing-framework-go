@@ -30,10 +30,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	pdir(path)
+	packageDir(path)
 }
 
-func pdir(dir string) {
+func packageDir(dir string) {
 	var conf loader.Config
 	conf.Import(dir)
 
@@ -56,7 +56,8 @@ func pdir(dir string) {
 		var changed bool
 		var err error
 		for _, fnc := range fncs {
-			c, err := fnc(prog.Fset, pi.Info, qual, f)
+			var c bool
+			c, err = fnc(prog.Fset, pi.Info, qual, f)
 			if c {
 				changed = true
 			}
@@ -74,6 +75,8 @@ func pdir(dir string) {
 			continue
 		}
 
+		fmt.Println(prog.Fset.Position(f.Pos()).Filename)
+
 		origHasBuildTag := false
 
 		for _, c := range f.Comments {
@@ -86,7 +89,7 @@ func pdir(dir string) {
 		}
 
 		var buf bytes.Buffer
-		fpath := filepath.Join(pi.Pkg.Path(), prog.Fset.Position(f.Pos()).Filename)
+		fpath := prog.Fset.Position(f.Pos()).Filename
 		if origHasBuildTag {
 			printer.Fprint(&buf, prog.Fset, f)
 		} else {

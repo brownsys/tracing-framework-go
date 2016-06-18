@@ -55,7 +55,10 @@ func main() {
 
 	expect := `package main
 
-import "golang.org/x/net/context"
+import (
+	"golang.org/x/net/context"
+	__runtime "runtime"
+)
 
 func one(c context.Context) {}
 
@@ -74,20 +77,20 @@ func nested(c context.Context) {
 func main() {
 	go func(__f func(c context.
 		Context), arg0 context.Context) {
-		runtime.SetLocal(arg0)
+		__runtime.SetLocal(arg0)
 		__f(arg0)
-
 	}(one, nil)
 	go func(__f func(c context.
 		Context, a int), arg0 context.
 		Context, arg1 int) {
-		runtime.SetLocal(arg0)
+		__runtime.SetLocal(
+			arg0)
 		__f(arg0, arg1)
 	}(two, nil, 0)
 	go func(__f func(c context.
 		Context, a int, b int), arg0 context.
 		Context, arg1 int, arg2 int) {
-		runtime.
+		__runtime.
 			SetLocal(arg0)
 		__f(arg0, arg1, arg2)
 	}(three,
@@ -96,43 +99,46 @@ func main() {
 	go func(__f func(c context.
 		Context, a ...int), arg0 context.
 		Context, arg1 ...[]int) {
-		runtime.SetLocal(arg0)
+		__runtime.
+			SetLocal(arg0)
 		__f(arg0, arg1...)
 	}(variadic, nil)
 	go func(__f func(c context.
 		Context, a ...int), arg0 context.
 		Context, arg1 ...[]int) {
-		runtime.SetLocal(arg0)
+		__runtime.
+			SetLocal(arg0)
 		__f(arg0, arg1...)
 	}(variadic, nil,
-		0,
-	)
+
+		0)
 	go func(__f func(c context.
 		Context, a ...int), arg0 context.
 		Context, arg1 ...[]int) {
-		runtime.SetLocal(arg0)
+		__runtime.
+			SetLocal(arg0)
 		__f(arg0, arg1...)
 	}(variadic, nil,
-		0,
-		1)
+
+		0, 1)
 	go func(__f func(c context.
 		Context, a ...int), arg0 context.
 		Context, arg1 ...[]int) {
-		runtime.SetLocal(arg0)
+		__runtime.
+			SetLocal(arg0)
 		__f(arg0, arg1...)
 	}(variadic, nil,
+
 		[]int{1, 2, 3})
 	go func(__f func(_ context.
 		Context), arg0 context.Context) {
-		runtime.SetLocal(arg0)
+		__runtime.SetLocal(arg0)
 		__f(arg0)
-
 	}(blank, nil)
 	go func(__f func(c context.
 		Context), arg0 context.Context) {
-		runtime.SetLocal(arg0)
+		__runtime.SetLocal(arg0)
 		__f(arg0)
-
 	}(nested, nil)
 
 }
@@ -140,7 +146,14 @@ func main() {
 
 	new := testHelper(t, src, rewriteGos)
 	if new != expect {
-		t.Errorf("unexpected output (see source for expected output):\n%v", new)
+		var idx int
+		for i, c := range []byte(new) {
+			if c != expect[i] {
+				idx = i
+				break
+			}
+		}
+		t.Errorf("unexpected output (see source for expected output) at character %v:\n%v", idx, new)
 	}
 }
 

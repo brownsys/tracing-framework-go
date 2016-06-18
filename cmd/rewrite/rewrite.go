@@ -9,13 +9,17 @@ import (
 	"go/token"
 	"go/types"
 	"reflect"
+	"strings"
 	"text/template"
+
+	"golang.org/x/tools/go/ast/astutil"
 )
 
 func rewriteGos(fset *token.FileSet, info types.Info, qual types.Qualifier, f *ast.File) (changed bool, err error) {
+	rname := runtimeName(f)
 	err = mapStmts(f, func(s ast.Stmt) ([]ast.Stmt, error) {
 		if g, ok := s.(*ast.GoStmt); ok {
-			stmts, err := rewriteGoStmt(fset, info, qual, g)
+			stmts, err := rewriteGoStmt(fset, info, qual, rname, g)
 			if stmts != nil {
 				changed = true
 			}
@@ -23,13 +27,18 @@ func rewriteGos(fset *token.FileSet, info types.Info, qual types.Qualifier, f *a
 		}
 		return nil, nil
 	})
+	if changed {
+		astutil.AddNamedImport(fset, f, rname, "runtime")
+		// astutil.AddImport(fset, f, "runtime")
+	}
 	return changed, err
 }
 
 func rewriteCalls(fset *token.FileSet, info types.Info, qual types.Qualifier, f *ast.File) (changed bool, err error) {
+	rname := runtimeName(f)
 	err = mapStmts(f, func(s ast.Stmt) ([]ast.Stmt, error) {
 		if a, ok := s.(*ast.AssignStmt); ok {
-			stmts, err := rewriteCallStmt(fset, info, qual, a)
+			stmts, err := rewriteCallStmt(fset, info, qual, rname, a)
 			if stmts != nil {
 				changed = true
 			}
@@ -37,7 +46,29 @@ func rewriteCalls(fset *token.FileSet, info types.Info, qual types.Qualifier, f 
 		}
 		return nil, nil
 	})
+	if changed {
+		astutil.AddNamedImport(fset, f, rname, "runtime")
+		// astutil.AddImport(fset, f, "runtime")
+	}
 	return changed, err
+}
+
+// runtimeName searches through f's imports to find whether
+// the "runtime" package has been imported, and if not, whether
+// another package whose name is also "runtime" has been
+// imported (which would conflict if we were to add "runtime"
+// as an import). It returns the name that should be used to
+// identify the "runtime" package.
+func runtimeName(f *ast.File) string {
+	for _, imp := range f.Imports {
+		if imp.Path.Value == `"runtime"` {
+			if imp.Name != nil {
+				return imp.Name.Name
+			}
+			return "runtime"
+		}
+	}
+	return "__runtime"
 }
 
 // mapStmts walks v, searching for values of type []ast.Stmt
@@ -79,7 +110,7 @@ func mapStmts(v ast.Node, f func(s ast.Stmt) ([]ast.Stmt, error)) error {
 	return nil
 }
 
-func rewriteCallStmt(fset *token.FileSet, info types.Info, qual types.Qualifier, a *ast.AssignStmt) ([]ast.Stmt, error) {
+func rewriteCallStmt(fset *token.FileSet, info types.Info, qual types.Qualifier, rname string, a *ast.AssignStmt) ([]ast.Stmt, error) {
 	// for the time being, we only handle
 	// statements which have a single
 	// function call on the RHS, like:
@@ -149,7 +180,7 @@ func rewriteCallStmt(fset *token.FileSet, info types.Info, qual types.Qualifier,
 		}
 	}
 
-	arg := struct{ Ctx string }{vname}
+	arg := struct{ Runtime, Ctx string }{rname, vname}
 
 	var buf bytes.Buffer
 	err := callTmpl.Execute(&buf, arg)
@@ -159,9 +190,9 @@ func rewriteCallStmt(fset *token.FileSet, info types.Info, qual types.Qualifier,
 	return append([]ast.Stmt{a}, parseStmts(string(buf.Bytes()))...), nil
 }
 
-var callTmpl = template.Must(template.New("").Parse(`runtime.SetLocal({{.Ctx}})`))
+var callTmpl = template.Must(template.New("").Parse(`{{.Runtime}}.SetLocal({{.Ctx}})`))
 
-func rewriteGoStmt(fset *token.FileSet, info types.Info, qual types.Qualifier, g *ast.GoStmt) ([]ast.Stmt, error) {
+func rewriteGoStmt(fset *token.FileSet, info types.Info, qual types.Qualifier, rname string, g *ast.GoStmt) ([]ast.Stmt, error) {
 	ftyp := info.TypeOf(g.Call.Fun)
 
 	if ftyp == nil {
@@ -183,11 +214,13 @@ func rewriteGoStmt(fset *token.FileSet, info types.Info, qual types.Qualifier, g
 	}
 
 	var arg struct {
+		Runtime                       string
 		Func                          string
 		Typ                           string
 		DefArgs, InnerArgs, OuterArgs []string
 	}
 
+	arg.Runtime = rname
 	arg.Func = nodeString(fset, g.Call.Fun)
 	arg.Typ = types.TypeString(ftyp, qual)
 
@@ -218,7 +251,7 @@ func rewriteGoStmt(fset *token.FileSet, info types.Info, qual types.Qualifier, g
 
 var goTmpl = template.Must(template.New("").Parse(`
 go func(__f {{.Typ}} {{range .DefArgs}},{{.}}{{end}}){
-	runtime.SetLocal(arg0)
+	{{.Runtime}}.SetLocal(arg0)
 	__f({{range .InnerArgs}}{{.}},{{end}})
 }({{.Func}}{{range .OuterArgs}},{{.}}{{end}})
 `))
@@ -290,6 +323,9 @@ func qualifierForFile(pkg *types.Package, f *ast.File) types.Qualifier {
 
 	m := make(map[*types.Package]string)
 	for _, imp := range f.Imports {
+		if imp.Path.Value == `"unsafe"` {
+			continue
+		}
 		// slice out quotation marks
 		l := len(imp.Path.Value)
 		pkg, ok := pathToPackage[imp.Path.Value[1:l-1]]
@@ -309,5 +345,6 @@ func qualifierForFile(pkg *types.Package, f *ast.File) types.Qualifier {
 
 func isContext(t types.Type) bool {
 	return t.String() == "golang.org/x/net/context.Context" ||
-		t.String() == "context.Context"
+		t.String() == "context.Context" || strings.HasSuffix(t.String(),
+		"_workspace/src/golang.org/x/net/context.Context")
 }
