@@ -5,16 +5,14 @@ import (
 	"fmt"
 	"go/ast"
 	"go/format"
-	"go/importer"
-	"go/parser"
 	"go/printer"
 	"go/token"
 	"go/types"
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"sort"
-	"strings"
+
+	"golang.org/x/tools/go/loader"
 )
 
 const (
@@ -23,125 +21,109 @@ const (
 )
 
 func main() {
-	pwd, err := os.Getwd()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "could not determine pwd:", err)
-		os.Exit(2)
+	path := "."
+	switch {
+	case len(os.Args) == 2:
+		path = os.Args[1]
+	case len(os.Args) > 2:
+		fmt.Fprintf(os.Stderr, "Usage: %v [<path>]\n", os.Args[0])
+		os.Exit(1)
 	}
-	processDir(pwd)
+
+	pdir(path)
 }
 
-func processDir(dir string) {
-	fset := token.NewFileSet()
-	filter := func(fi os.FileInfo) bool {
-		return !strings.HasSuffix(fi.Name(), "_test.go") &&
-			!strings.HasSuffix(fi.Name(), fileSuffix)
-	}
-	pkgs, err := parser.ParseDir(fset, dir, filter, parser.ParseComments|parser.DeclarationErrors)
+func pdir(dir string) {
+	var conf loader.Config
+	conf.Import(dir)
+
+	prog, err := conf.Load()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "could not parse source files:", err)
 		os.Exit(2)
 	}
 
-	var pkgNames []string
-	for name := range pkgs {
-		pkgNames = append(pkgNames, name)
-	}
-	sort.Strings(pkgNames)
+	pi := prog.InitialPackages()[0]
 
-	info := types.Info{
-		Types:      make(map[ast.Expr]types.TypeAndValue),
-		Defs:       make(map[*ast.Ident]types.Object),
-		Uses:       make(map[*ast.Ident]types.Object),
-		Implicits:  make(map[ast.Node]types.Object),
-		Selections: make(map[*ast.SelectorExpr]*types.Selection),
-		Scopes:     make(map[ast.Node]*types.Scope),
-	}
+	for _, f := range pi.Files {
+		qual := qualifierForFile(pi.Pkg, f)
 
-	c := types.Config{
-		Error:    func(err error) { fmt.Fprintln(os.Stderr, err) },
-		Importer: importer.Default(),
-	}
-
-	for _, name := range pkgNames {
-		pkg := pkgs[name]
-
-		var files []*ast.File
-		fpaths := make(map[*ast.File]string)
-		for fname, f := range pkg.Files {
-			files = append(files, f)
-			fpaths[f] = fname
+		fncs := []func(*token.FileSet, types.Info, types.Qualifier, *ast.File) (bool, error){
+			rewriteGos,
+			rewriteCalls,
 		}
 
-		p, err := c.Check(pkg.Name, fset, files, &info)
+		var changed bool
+		var err error
+		for _, fnc := range fncs {
+			c, err := fnc(prog.Fset, pi.Info, qual, f)
+			if c {
+				changed = true
+			}
+			if err != nil {
+				break
+			}
+		}
+
 		if err != nil {
-			// it was already printed by c.Error
+			fmt.Fprintf(os.Stderr, "could not rewrite %v: %v\n", f, err)
 			os.Exit(2)
 		}
 
-		for _, f := range files {
-			qual := qualifierForFile(p, f)
+		if !changed {
+			continue
+		}
 
-			err := rewriteGos(fset, info, qual, f)
-			if err == nil {
-				err = rewriteCalls(fset, info, qual, f)
+		origHasBuildTag := false
+
+		for _, c := range f.Comments {
+			for _, c := range c.List {
+				if c.Text == "// +build !"+buildTag {
+					c.Text = "// +build " + buildTag
+					origHasBuildTag = true
+				}
 			}
+		}
+
+		var buf bytes.Buffer
+		fpath := filepath.Join(pi.Pkg.Path(), prog.Fset.Position(f.Pos()).Filename)
+		if origHasBuildTag {
+			printer.Fprint(&buf, prog.Fset, f)
+		} else {
+			buf.Write([]byte("// +build " + buildTag + "\n\n"))
+			printer.Fprint(&buf, prog.Fset, f)
+
+			// prepend build comment to original file
+			b, err := ioutil.ReadFile(fpath)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "could not rewrite %v: %v\n", f, err)
+				fmt.Fprintf(os.Stderr, "could not read source file: %v\n", err)
 				os.Exit(2)
 			}
-
-			origHasBuildTag := false
-
-			for _, c := range f.Comments {
-				for _, c := range c.List {
-					if c.Text == "// +build !"+buildTag {
-						c.Text = "// +build " + buildTag
-						origHasBuildTag = true
-					}
-				}
-			}
-
-			var buf bytes.Buffer
-			fpath := fpaths[f]
-			if origHasBuildTag {
-				printer.Fprint(&buf, fset, f)
-			} else {
-				buf.Write([]byte("// +build " + buildTag + "\n\n"))
-				printer.Fprint(&buf, fset, f)
-
-				// prepend build comment to original file
-				b, err := ioutil.ReadFile(fpath)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "could not read source file: %v\n", err)
-					os.Exit(2)
-				}
-				b = append([]byte("// +build !"+buildTag+"\n\n"), b...)
-				b, err = format.Source(b)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "could not format source file %v: %v\n", filepath.Base(fpath), err)
-					os.Exit(2)
-				}
-				f, err := os.OpenFile(fpath, os.O_WRONLY, 0)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "could not open source file for writing: %v\n", err)
-					os.Exit(2)
-				}
-				if _, err = f.Write(b); err != nil {
-					fmt.Fprintf(os.Stderr, "could not write to source file: %v\n", err)
-					os.Exit(2)
-				}
-			}
-
-			b, err := format.Source(buf.Bytes())
+			b = append([]byte("// +build !"+buildTag+"\n\n"), b...)
+			b, err = format.Source(b)
 			if err != nil {
-				panic(fmt.Errorf("unexpected internal error: %v", err))
-			}
-			fpath = fpath[:len(fpath)-3] + fileSuffix
-			if err = ioutil.WriteFile(fpath, b, 0664); err != nil {
-				fmt.Fprintf(os.Stderr, "could not create instrument source file: %v\n", err)
+				fmt.Fprintf(os.Stderr, "could not format source file %v: %v\n", filepath.Base(fpath), err)
 				os.Exit(2)
 			}
+			f, err := os.OpenFile(fpath, os.O_WRONLY, 0)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "could not open source file for writing: %v\n", err)
+				os.Exit(2)
+			}
+			if _, err = f.Write(b); err != nil {
+				fmt.Fprintf(os.Stderr, "could not write to source file: %v\n", err)
+				os.Exit(2)
+			}
+		}
+
+		b, err := format.Source(buf.Bytes())
+		if err != nil {
+			panic(fmt.Errorf("unexpected internal error: %v", err))
+		}
+		fpath = fpath[:len(fpath)-3] + fileSuffix
+		if err = ioutil.WriteFile(fpath, b, 0664); err != nil {
+			fmt.Fprintf(os.Stderr, "could not create instrument source file: %v\n", err)
+			os.Exit(2)
 		}
 	}
 }

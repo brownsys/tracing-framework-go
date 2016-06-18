@@ -12,22 +12,32 @@ import (
 	"text/template"
 )
 
-func rewriteGos(fset *token.FileSet, info types.Info, qual types.Qualifier, f *ast.File) error {
-	return mapStmts(f, func(s ast.Stmt) ([]ast.Stmt, error) {
+func rewriteGos(fset *token.FileSet, info types.Info, qual types.Qualifier, f *ast.File) (changed bool, err error) {
+	err = mapStmts(f, func(s ast.Stmt) ([]ast.Stmt, error) {
 		if g, ok := s.(*ast.GoStmt); ok {
-			return rewriteGoStmt(fset, info, qual, g)
+			stmts, err := rewriteGoStmt(fset, info, qual, g)
+			if stmts != nil {
+				changed = true
+			}
+			return stmts, err
 		}
 		return nil, nil
 	})
+	return changed, err
 }
 
-func rewriteCalls(fset *token.FileSet, info types.Info, qual types.Qualifier, f *ast.File) error {
-	return mapStmts(f, func(s ast.Stmt) ([]ast.Stmt, error) {
+func rewriteCalls(fset *token.FileSet, info types.Info, qual types.Qualifier, f *ast.File) (changed bool, err error) {
+	err = mapStmts(f, func(s ast.Stmt) ([]ast.Stmt, error) {
 		if a, ok := s.(*ast.AssignStmt); ok {
-			return rewriteCallStmt(fset, info, qual, a)
+			stmts, err := rewriteCallStmt(fset, info, qual, a)
+			if stmts != nil {
+				changed = true
+			}
+			return stmts, err
 		}
 		return nil, nil
 	})
+	return changed, err
 }
 
 // mapStmts walks v, searching for values of type []ast.Stmt

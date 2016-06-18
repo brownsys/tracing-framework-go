@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"fmt"
 	"go/ast"
 	"go/format"
 	"go/parser"
@@ -145,7 +144,7 @@ func main() {
 	}
 }
 
-type rewriter func(fset *token.FileSet, info types.Info, qual types.Qualifier, f *ast.File) error
+type rewriter func(fset *token.FileSet, info types.Info, qual types.Qualifier, f *ast.File) (bool, error)
 
 func testHelper(t *testing.T, src string, r rewriter) string {
 	c := loader.Config{
@@ -163,9 +162,9 @@ func testHelper(t *testing.T, src string, r rewriter) string {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	info := p.Package("main").Info
+	pi := p.Package("main")
 
-	err = r(c.Fset, info, qualifierFromProg(p, f), f)
+	_, err = r(c.Fset, pi.Info, qualifierForFile(pi.Pkg, f), f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -180,31 +179,4 @@ func testHelper(t *testing.T, src string, r rewriter) string {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	return string(b)
-}
-
-// similar to qualifierForFile, but takes a *loader.Program
-// instead of a *types.Package
-func qualifierFromProg(p *loader.Program, f *ast.File) types.Qualifier {
-	pathToPackage := make(map[string]*types.Package)
-	for _, pkg := range p.AllPackages {
-		pathToPackage[pkg.Pkg.Path()] = pkg.Pkg
-	}
-
-	m := make(map[*types.Package]string)
-	for _, imp := range f.Imports {
-		// slice out quotation marks
-		l := len(imp.Path.Value)
-		pkg, ok := pathToPackage[imp.Path.Value[1:l-1]]
-		if !ok {
-			panic(fmt.Errorf("package %v (imported in %v) not in (*loader.Program).AllPackages", imp.Path.Value, f.Name.Name))
-		}
-		name := ""
-		if imp.Name == nil {
-			name = pkg.Name()
-		} else {
-			name = imp.Name.Name
-		}
-		m[pkg] = name
-	}
-	return func(p *types.Package) string { return m[p] }
 }
