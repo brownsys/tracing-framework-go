@@ -2,8 +2,10 @@ package client
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 	"net"
+	"os"
 	"sync/atomic"
 )
 
@@ -42,14 +44,14 @@ func (c *Client) daemon(server string, conn net.Conn) {
 			if err == nil {
 				break
 			}
-			// TODO: Log error
+			fmt.Fprintf(os.Stderr, "pubsub client error: %v\n", err)
 
 			for {
 				conn, err = net.Dial("tcp", server)
 				if err == nil {
 					break
 				}
-				// TODO: Log error
+				fmt.Fprintf(os.Stderr, "pubsub client error: %v\n", err)
 			}
 		}
 	}
@@ -63,12 +65,16 @@ func (c *Client) Close() {
 	atomic.StoreUint32(&c.closed, 1)
 }
 
-func (c *Client) Publish(topic, msg string) {
+func (c *Client) Publish(topic, msg []byte) {
 	if atomic.LoadUint32(&c.closed) == 1 {
 		panic("publish on closed client")
 	}
 
-	c.messages <- message{[]byte(topic), []byte(msg)}
+	c.messages <- message{topic, msg}
+}
+
+func (c *Client) PublishString(topic, msg string) {
+	c.Publish([]byte(topic), []byte(msg))
 }
 
 type message struct {
