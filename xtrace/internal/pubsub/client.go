@@ -1,4 +1,4 @@
-package client
+package pubsub
 
 import (
 	"encoding/binary"
