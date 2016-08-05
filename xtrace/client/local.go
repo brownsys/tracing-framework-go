@@ -18,12 +18,12 @@ func init() {
 
 func newEvent() (parent, event int64) {
 	parent = local.GetLocal(token).(int64)
-	event = newEventID()
+	event = randInt64()
 	local.SetLocal(token, event)
 	return parent, event
 }
 
-func newEventID() int64 {
+func randInt64() int64 {
 	var b [8]byte
 	_, err := rand.Read(b[:])
 	if err != nil {
