@@ -9,7 +9,6 @@ import (
 	"go/token"
 	"go/types"
 	"reflect"
-	"strings"
 	"text/template"
 
 	"golang.org/x/tools/go/ast/astutil"
@@ -30,25 +29,6 @@ func rewriteGos(fset *token.FileSet, info types.Info, qual types.Qualifier, f *a
 	if changed {
 		// astutil.AddNamedImport(fset, f, rname, "runtime")
 		astutil.AddImport(fset, f, "github.com/brownsys/tracing-framework-go/local")
-		// astutil.AddImport(fset, f, "runtime")
-	}
-	return changed, err
-}
-
-func rewriteCalls(fset *token.FileSet, info types.Info, qual types.Qualifier, f *ast.File) (changed bool, err error) {
-	rname := runtimeName(f)
-	err = mapStmts(f, func(s ast.Stmt) ([]ast.Stmt, error) {
-		if a, ok := s.(*ast.AssignStmt); ok {
-			stmts, err := rewriteCallStmt(fset, info, qual, rname, a)
-			if stmts != nil {
-				changed = true
-			}
-			return stmts, err
-		}
-		return nil, nil
-	})
-	if changed {
-		astutil.AddNamedImport(fset, f, rname, "runtime")
 		// astutil.AddImport(fset, f, "runtime")
 	}
 	return changed, err
@@ -133,88 +113,6 @@ func mapStmts(v ast.Node, f func(s ast.Stmt) ([]ast.Stmt, error)) error {
 	return nil
 }
 
-func rewriteCallStmt(fset *token.FileSet, info types.Info, qual types.Qualifier, rname string, a *ast.AssignStmt) ([]ast.Stmt, error) {
-	// for the time being, we only handle
-	// statements which have a single
-	// function call on the RHS, like:
-	//  a, b = f()
-
-	if len(a.Rhs) != 1 {
-		for _, aa := range a.Rhs {
-			if _, ok := aa.(*ast.CallExpr); ok {
-				return nil, fmt.Errorf("%v: unsupported statement format", fset.Position(a.Pos()))
-			}
-		}
-		// none of the RHS expressions are function
-		// calls, so we can just safely ignore this
-		return nil, nil
-	}
-
-	c, ok := a.Rhs[0].(*ast.CallExpr)
-	if !ok {
-		return nil, nil
-	}
-
-	rettyp := info.TypeOf(c)
-	if rettyp == nil {
-		return nil, fmt.Errorf("%v: could not determine return type of function",
-			fset.Position(c.Pos()))
-	}
-
-	var vname string
-
-	// since the code has been type checked,
-	// we can assume that the function has
-	// at least one return value, and that
-	// len(LHS) = len(RHS)
-	if t, ok := rettyp.(*types.Tuple); ok {
-		context := false
-		for i := 0; i < t.Len(); i++ {
-			switch v := a.Lhs[i].(type) {
-			case *ast.Ident:
-				if v.Name != "_" && isContext(t.At(i).Type()) {
-					if context {
-						// more than one context.Context variable
-						return nil, fmt.Errorf("%v: unsupported statement format", fset.Position(a.Pos()))
-					}
-					context = true
-					vname = v.Name
-				}
-			default:
-				// TODO: handle LHS elements other than identifiers
-				return nil, nil
-				panic(fmt.Errorf("unexpected type %v", reflect.TypeOf(v)))
-			}
-		}
-		if !context {
-			return nil, nil
-		}
-	} else {
-		switch v := a.Lhs[0].(type) {
-		case *ast.Ident:
-			if v.Name == "_" || !isContext(rettyp) {
-				return nil, nil
-			}
-			vname = v.Name
-		default:
-			// TODO: handle LHS elements other than identifiers
-			return nil, nil
-			// panic(fmt.Errorf("unexpected type %v", reflect.TypeOf(v)))
-		}
-	}
-
-	arg := struct{ Runtime, Ctx string }{rname, vname}
-
-	var buf bytes.Buffer
-	err := callTmpl.Execute(&buf, arg)
-	if err != nil {
-		panic(fmt.Errorf("internal error: %v", err))
-	}
-	return append([]ast.Stmt{a}, parseStmts(string(buf.Bytes()))...), nil
-}
-
-var callTmpl = template.Must(template.New("").Parse(`{{.Runtime}}.SetLocal({{.Ctx}})`))
-
 func rewriteGoStmt(fset *token.FileSet, info types.Info, qual types.Qualifier, rname string, g *ast.GoStmt) ([]ast.Stmt, error) {
 	ftyp := info.TypeOf(g.Call.Fun)
 
@@ -223,18 +121,6 @@ func rewriteGoStmt(fset *token.FileSet, info types.Info, qual types.Qualifier, r
 			fset.Position(g.Call.Fun.Pos()))
 	}
 	sig := ftyp.(*types.Signature)
-
-	// // According to the context documentation:
-	// //
-	// // Do not store Contexts inside a struct type;
-	// // instead, pass a Context explicitly to each
-	// // function that needs it. The Context should
-	// // be the first parameter, typically named ctx.
-	// //
-	// // Thus, we only handle this case.
-	// if sig.Params().Len() == 0 || !isContext(sig.Params().At(0).Type()) {
-	// 	return nil, nil
-	// }
 
 	var arg struct {
 		Runtime                       string
@@ -364,10 +250,4 @@ func qualifierForFile(pkg *types.Package, f *ast.File) types.Qualifier {
 		m[pkg] = name
 	}
 	return func(p *types.Package) string { return m[p] }
-}
-
-func isContext(t types.Type) bool {
-	return t.String() == "golang.org/x/net/context.Context" ||
-		t.String() == "context.Context" || strings.HasSuffix(t.String(),
-		"_workspace/src/golang.org/x/net/context.Context")
 }
