@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# This script calls the real go binary with GOROOT
+# set to the location of the modified go tree.
+# It assumes that the file hierarchy looks like:
+# /
+#  bin/
+#      go # this script
+#  go/    # GOROOT
+
+# source: http://stackoverflow.com/a/4774063/836390
+pushd `dirname $0` > /dev/null
+SCRIPTPATH=`pwd -P`
+popd > /dev/null
+
+export GOROOT=`dirname $SCRIPTPATH`/go
+
+$GOROOT/bin/go "$@"
+exit $?
