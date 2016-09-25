@@ -300,7 +300,7 @@ func parseStmt(src string) *ast.BlockStmt {
 		callback,
 			ok := instrument.
 			GetCallback(
-			parseStmt)
+				parseStmt)
 		if ok {
 			callback.(func(string))(src)
 		}
