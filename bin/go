@@ -13,7 +13,37 @@ pushd `dirname $0` > /dev/null
 SCRIPTPATH=`pwd -P`
 popd > /dev/null
 
-export GOROOT=`dirname $SCRIPTPATH`/go
+case "`uname -s`" in
+Darwin)
+  OS=darwin
+  ;;
+Linux)
+  OS=linux
+  ;;
+*)
+  echo "Unsupported OS: `uname -s`" >&2
+  exit 1
+esac
+
+case "`uname -m`" in
+x86_64)
+  ARCH=amd64
+  ;;
+i.86)
+  ARCH=386
+  ;;
+*)
+  echo "Unsupported architecture: `uname -m`" >&2
+  exit 1
+esac
+
+PLATFORM=${OS}_$ARCH
+export GOROOT=`dirname $SCRIPTPATH`/go/$PLATFORM
+
+if ! [ -d "$GOROOT" ]; then
+  echo "Unsupported platform: $PLATFORM" >&2
+  exit 1
+fi
 
 $GOROOT/bin/go "$@"
 exit $?
