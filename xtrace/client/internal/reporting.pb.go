@@ -11,7 +11,7 @@ It is generated from these files:
 It has these top-level messages:
 	XTraceReportv4
 */
-package client
+package internal
 
 import proto "github.com/golang/protobuf/proto"
 import fmt "fmt"
