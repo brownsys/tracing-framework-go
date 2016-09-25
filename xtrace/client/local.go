@@ -16,10 +16,28 @@ func init() {
 	})
 }
 
+// SetEvent sets the current goroutine's X-Trace Task ID.
+// This should be used when propagating Task IDs over RPC
+// calls or other channels.
+//
+// WARNING: This will overwrite any previous Task ID,
+// so call with caution.
+func SetTask(taskID int64) {
+	local.SetLocal(token, taskID)
+}
+
+// GetTask gets the current goroutine's X-Trace Task ID.
+// Note that if one has not been set yet, GetTask will
+// return 0. This should be used when propagating Task IDs
+// over RPC calls or other channels.
+func GetTask() (taskID int64) {
+	return local.GetLocal(token).(int64)
+}
+
 func newEvent() (parent, event int64) {
-	parent = local.GetLocal(token).(int64)
+	parent = GetTask()
 	event = randInt64()
-	local.SetLocal(token, event)
+	SetTask(event)
 	return parent, event
 }
 
