@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	fileSuffix = "_context.go"
-	buildTag   = "context"
+	fileSuffix = "_local.go"
+	buildTag   = "local"
 )
 
 func main() {
@@ -50,7 +50,6 @@ func packageDir(dir string) {
 
 		fncs := []func(*token.FileSet, types.Info, types.Qualifier, *ast.File) (bool, error){
 			rewriteGos,
-			rewriteCalls,
 		}
 
 		var changed bool

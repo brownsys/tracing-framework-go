@@ -16,130 +16,109 @@ func TestGos(t *testing.T) {
 	src := `
 package main
 
-import "golang.org/x/net/context"
+func one(a int) {}
 
-func one(c context.Context) {}
+func two(a, b int) {}
 
-func two(c context.Context, a int) {}
+func three(a, b, c int) {}
 
-func three(c context.Context, a int, b int) {}
+func variadic(a ...int) {}
 
-func variadic(c context.Context, a ...int) {}
+func blank(_ int) {}
 
-func blank(_ context.Context) {}
-
-func nested(c context.Context) {
-	func(c context.Context) {}(c)
+func nested(a int) {
+	func(a int) {}(a)
 }
 
 func main() {
-	go one(nil)
+	go one(0)
 
-	go two(nil, 0)
+	go two(0, 1)
 
-	go three(nil, 0, 1)
+	go three(0, 1, 2)
 
-	go variadic(nil)
+	go variadic()
 
-	go variadic(nil, 0)
+	go variadic(0)
 
-	go variadic(nil, 0, 1)
+	go variadic(0, 1)
 
-	go variadic(nil, []int{1, 2, 3}...)
+	go variadic([]int{1, 2, 3}...)
 
-	go blank(nil)
+	go blank(0)
 
-	go nested(nil)
+	go nested(0)
 }
 `
 
 	expect := `package main
 
-import (
-	"golang.org/x/net/context"
-	__runtime "runtime"
-)
+import "github.com/brownsys/tracing-framework-go/local"
 
-func one(c context.Context) {}
+func one(a int) {}
 
-func two(c context.Context, a int) {}
+func two(a, b int) {}
 
-func three(c context.Context, a int, b int) {}
+func three(a, b, c int) {}
 
-func variadic(c context.Context, a ...int) {}
+func variadic(a ...int) {}
 
-func blank(_ context.Context) {}
+func blank(_ int) {}
 
-func nested(c context.Context) {
-	func(c context.Context) {}(c)
+func nested(a int) {
+	func(a int) {}(a)
 }
 
 func main() {
-	go func(__f func(c context.
-		Context), arg0 context.Context) {
-		__runtime.SetLocal(arg0)
-		__f(arg0)
-	}(one, nil)
-	go func(__f func(c context.
-		Context, a int), arg0 context.
-		Context, arg1 int) {
-		__runtime.SetLocal(
-			arg0)
-		__f(arg0, arg1)
-	}(two, nil, 0)
-	go func(__f func(c context.
-		Context, a int, b int), arg0 context.
-		Context, arg1 int, arg2 int) {
-		__runtime.
-			SetLocal(arg0)
-		__f(arg0, arg1, arg2)
-	}(three,
-
-		nil, 0, 1)
-	go func(__f func(c context.
-		Context, a ...int), arg0 context.
-		Context, arg1 ...[]int) {
-		__runtime.
-			SetLocal(arg0)
-		__f(arg0, arg1...)
-	}(variadic, nil)
-	go func(__f func(c context.
-		Context, a ...int), arg0 context.
-		Context, arg1 ...[]int) {
-		__runtime.
-			SetLocal(arg0)
-		__f(arg0, arg1...)
-	}(variadic, nil,
+	go func(__f1 func(), __f2 func(a int), arg0 int) {
+		__f1()
+		__f2(arg0)
+	}(local.GetSpawnCallback(), one, 0)
+	go func(__f1 func(), __f2 func(a int, b int), arg0 int, arg1 int) {
+		__f1()
+		__f2(arg0, arg1)
+	}(local.GetSpawnCallback(), two, 0, 1)
+	go func(__f1 func(), __f2 func(a int, b int, c int), arg0 int, arg1 int, arg2 int) {
+		__f1()
+		__f2(arg0, arg1, arg2)
+	}(local.GetSpawnCallback(), three, 0, 1,
+		2)
+	go func(__f1 func(), __f2 func(a ...int), arg0 ...int) {
+		__f1()
+		__f2(arg0...)
+	}(local.
+		GetSpawnCallback(), variadic,
+	)
+	go func(__f1 func(), __f2 func(a ...int), arg0 ...int) {
+		__f1()
+		__f2(arg0...)
+	}(local.
+		GetSpawnCallback(), variadic,
 
 		0)
-	go func(__f func(c context.
-		Context, a ...int), arg0 context.
-		Context, arg1 ...[]int) {
-		__runtime.
-			SetLocal(arg0)
-		__f(arg0, arg1...)
-	}(variadic, nil,
+	go func(__f1 func(), __f2 func(a ...int), arg0 ...int) {
+		__f1()
+		__f2(arg0...)
+	}(local.
+		GetSpawnCallback(), variadic,
 
 		0, 1)
-	go func(__f func(c context.
-		Context, a ...int), arg0 context.
-		Context, arg1 ...[]int) {
-		__runtime.
-			SetLocal(arg0)
-		__f(arg0, arg1...)
-	}(variadic, nil,
+	go func(__f1 func(), __f2 func(a ...int), arg0 ...int) {
+		__f1()
+		__f2(arg0...)
+	}(local.
+		GetSpawnCallback(), variadic,
 
-		[]int{1, 2, 3})
-	go func(__f func(_ context.
-		Context), arg0 context.Context) {
-		__runtime.SetLocal(arg0)
-		__f(arg0)
-	}(blank, nil)
-	go func(__f func(c context.
-		Context), arg0 context.Context) {
-		__runtime.SetLocal(arg0)
-		__f(arg0)
-	}(nested, nil)
+		[]int{1, 2, 3}...,
+	)
+	go func(__f1 func(), __f2 func(_ int), arg0 int) {
+		__f1()
+		__f2(arg0)
+	}(local.GetSpawnCallback(), blank, 0)
+	go func(__f1 func(), __f2 func(a int), arg0 int) {
+		__f1()
+		__f2(arg0)
+	}(local.GetSpawnCallback(), nested, 0)
 
 }
 `
