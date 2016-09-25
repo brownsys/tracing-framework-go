@@ -135,19 +135,25 @@ func rewriteGoStmt(fset *token.FileSet, info types.Info, qual types.Qualifier, r
 
 	params := sig.Params()
 	for i := 0; i < params.Len(); i++ {
-		typ := types.TypeString(params.At(i).Type(), qual)
 		name := fmt.Sprintf("arg%v", i)
 		if sig.Variadic() && i == params.Len()-1 {
+			typ := types.TypeString(params.At(i).Type().(*types.Slice).Elem(), qual)
 			arg.DefArgs = append(arg.DefArgs, name+" ..."+typ)
 			arg.InnerArgs = append(arg.InnerArgs, name+"...")
 		} else {
+			typ := types.TypeString(params.At(i).Type(), qual)
 			arg.DefArgs = append(arg.DefArgs, name+" "+typ)
 			arg.InnerArgs = append(arg.InnerArgs, name)
 		}
 	}
 
-	for _, a := range g.Call.Args {
-		arg.OuterArgs = append(arg.OuterArgs, nodeString(fset, a))
+	for i, a := range g.Call.Args {
+		if g.Call.Ellipsis.IsValid() && i == len(g.Call.Args)-1 {
+			// g.Call.Ellipsis.IsValid() is true if g is variadic
+			arg.OuterArgs = append(arg.OuterArgs, nodeString(fset, a)+"...")
+		} else {
+			arg.OuterArgs = append(arg.OuterArgs, nodeString(fset, a))
+		}
 	}
 
 	var buf bytes.Buffer

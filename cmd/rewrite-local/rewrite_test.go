@@ -16,8 +16,6 @@ func TestGos(t *testing.T) {
 	src := `
 package main
 
-import "golang.org/x/net/context"
-
 func one(a int) {}
 
 func two(a, b int) {}
@@ -55,10 +53,7 @@ func main() {
 
 	expect := `package main
 
-import (
-	"github.com/brownsys/tracing-framework-go/local"
-	"golang.org/x/net/context"
-)
+import "github.com/brownsys/tracing-framework-go/local"
 
 func one(a int) {}
 
@@ -79,40 +74,43 @@ func main() {
 		__f1()
 		__f2(arg0)
 	}(local.GetSpawnCallback(), one, 0)
-	go func(__f1 func(), __f2 func(a int, b int),
-
-		arg0 int, arg1 int) {
+	go func(__f1 func(), __f2 func(a int, b int), arg0 int, arg1 int) {
 		__f1()
 		__f2(arg0, arg1)
+	}(local.GetSpawnCallback(), two, 0, 1)
+	go func(__f1 func(), __f2 func(a int, b int, c int), arg0 int, arg1 int, arg2 int) {
+		__f1()
+		__f2(arg0, arg1, arg2)
+	}(local.GetSpawnCallback(), three, 0, 1,
+		2)
+	go func(__f1 func(), __f2 func(a ...int), arg0 ...int) {
+		__f1()
+		__f2(arg0...)
 	}(local.
-		GetSpawnCallback(), two,
+		GetSpawnCallback(), variadic,
+	)
+	go func(__f1 func(), __f2 func(a ...int), arg0 ...int) {
+		__f1()
+		__f2(arg0...)
+	}(local.
+		GetSpawnCallback(), variadic,
+
+		0)
+	go func(__f1 func(), __f2 func(a ...int), arg0 ...int) {
+		__f1()
+		__f2(arg0...)
+	}(local.
+		GetSpawnCallback(), variadic,
 
 		0, 1)
-	go func(__f1 func(), __f2 func(a int, b int,
+	go func(__f1 func(), __f2 func(a ...int), arg0 ...int) {
+		__f1()
+		__f2(arg0...)
+	}(local.
+		GetSpawnCallback(), variadic,
 
-		c int), arg0 int, arg1 int, arg2 int) {
-		__f1()
-		__f2(
-			arg0, arg1, arg2)
-	}(local.GetSpawnCallback(), three,
-
-		0, 1, 2)
-	go func(__f1 func(), __f2 func(a ...int), arg0 ...[]int) {
-		__f1()
-		__f2(arg0...)
-	}(local.GetSpawnCallback(), variadic)
-	go func(__f1 func(), __f2 func(a ...int), arg0 ...[]int) {
-		__f1()
-		__f2(arg0...)
-	}(local.GetSpawnCallback(), variadic, 0)
-	go func(__f1 func(), __f2 func(a ...int), arg0 ...[]int) {
-		__f1()
-		__f2(arg0...)
-	}(local.GetSpawnCallback(), variadic, 0, 1)
-	go func(__f1 func(), __f2 func(a ...int), arg0 ...[]int) {
-		__f1()
-		__f2(arg0...)
-	}(local.GetSpawnCallback(), variadic, []int{1, 2, 3})
+		[]int{1, 2, 3}...,
+	)
 	go func(__f1 func(), __f2 func(_ int), arg0 int) {
 		__f1()
 		__f2(arg0)
