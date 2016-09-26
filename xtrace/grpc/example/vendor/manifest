@@ -1,0 +1,13 @@
+{
+	"version": 0,
+	"dependencies": [
+		{
+			"importpath": "github.com/spf13/pflag",
+			"repository": "https://github.com/spf13/pflag",
+			"vcs": "git",
+			"revision": "c7e63cf4530bcd3ba943729cee0efeff2ebea63f",
+			"branch": "master",
+			"notests": true
+		}
+	]
+}

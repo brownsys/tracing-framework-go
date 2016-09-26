@@ -10,20 +10,54 @@ import (
 
 var token local.Token
 
+type localStorage struct {
+	taskID  int64
+	eventID int64
+}
+
 func init() {
-	token = local.Register(int64(0), local.Callbacks{
-		func(l interface{}) interface{} { return l },
+	token = local.Register(&localStorage{
+		taskID:  randInt64(),
+		eventID: randInt64(),
+	}, local.Callbacks{
+		func(l interface{}) interface{} {
+			// deep copy l
+			n := *(l.(*localStorage))
+			return &n
+		},
 	})
 }
 
-// SetEventID sets the current goroutine's X-Trace Task ID.
+func getLocal() *localStorage {
+	return local.GetLocal(token).(*localStorage)
+}
+
+// SetEventID sets the current goroutine's X-Trace Event ID.
+// This should be used when propagating Event IDs over RPC
+// calls or other channels.
+//
+// WARNING: This will overwrite any previous Event ID,
+// so call with caution.
+func SetEventID(eventID int64) {
+	getLocal().eventID = eventID
+}
+
+// SetTaskID sets the current goroutine's X-Trace Task ID.
 // This should be used when propagating Task IDs over RPC
 // calls or other channels.
 //
 // WARNING: This will overwrite any previous Task ID,
 // so call with caution.
 func SetTaskID(taskID int64) {
-	local.SetLocal(token, taskID)
+	getLocal().taskID = taskID
+}
+
+// GetEventID gets the current goroutine's X-Trace Event ID.
+// Note that if one has not been set yet, GetEventID will
+// return 0. This should be used when propagating Event IDs
+// over RPC calls or other channels.
+func GetEventID() (eventID int64) {
+	return getLocal().eventID
 }
 
 // GetTaskID gets the current goroutine's X-Trace Task ID.
@@ -31,13 +65,13 @@ func SetTaskID(taskID int64) {
 // return 0. This should be used when propagating Task IDs
 // over RPC calls or other channels.
 func GetTaskID() (taskID int64) {
-	return local.GetLocal(token).(int64)
+	return getLocal().taskID
 }
 
 func newEvent() (parent, event int64) {
-	parent = GetTaskID()
+	parent = GetEventID()
 	event = randInt64()
-	SetTaskID(event)
+	SetEventID(event)
 	return parent, event
 }
 

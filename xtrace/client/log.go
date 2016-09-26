@@ -3,6 +3,7 @@ package client
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/brownsys/tracing-framework-go/xtrace/client/internal"
@@ -11,7 +12,6 @@ import (
 )
 
 var client *pubsub.Client
-var taskID = randInt64()
 
 // Connect initializes a connection to the X-Trace
 // server. Connect must be called (and must complete
@@ -23,6 +23,7 @@ func Connect(server string) error {
 }
 
 var topic = []byte("xtrace")
+var processName = strings.Join(os.Args, " ")
 
 // Log logs the given message. Log must not be
 // called before Connect has been called successfully.
@@ -35,7 +36,7 @@ func Log(str string) {
 	var report internal.XTraceReportv4
 
 	report.TaskId = new(int64)
-	*report.TaskId = taskID
+	*report.TaskId = GetTaskID()
 	report.ParentEventId = []int64{parent}
 	report.EventId = new(int64)
 	*report.EventId = event
@@ -48,7 +49,7 @@ func Log(str string) {
 	report.ProcessId = new(int32)
 	*report.ProcessId = int32(os.Getpid())
 	report.ProcessName = new(string)
-	*report.ProcessName = os.Args[0] // TODO: name could be changed at runtime
+	*report.ProcessName = processName
 	host, err := os.Hostname()
 	if err != nil {
 		report.Host = new(string)
@@ -60,5 +61,10 @@ func Log(str string) {
 		panic(fmt.Errorf("internal error: %v", err))
 	}
 
-	client.Publish(topic, buf)
+	// NOTE(joshlf): Currently, Log blocks until the log message
+	// has been written to the TCP connection to the X-Trace server.
+	// This makes testing easier, but ideally we should optimize
+	// so that the program can block before it quits, but each
+	// call to Log is not blocking.
+	client.PublishBlock(topic, buf)
 }

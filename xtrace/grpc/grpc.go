@@ -13,80 +13,88 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-// MetadataKey is the key used to store an X-Trace
-// Task ID in gRPC metadata.
-var MetadataKey = "XTRACE_TASKID"
-
-type key struct{}
+var (
+	// EventIDMetadataKey is the key used to store an
+	// X-Trace Event ID in gRPC metadata.
+	EventIDMetadataKey = "xtrace_event_id"
+	// TaskIDMetadataKey is the key used to store an
+	// X-Trace Task ID in gRPC metadata.
+	TaskIDMetadataKey = "xtrace_task_id"
+)
 
 // Invoke wraps grpc's Invoke function, adding the calling goroutine's
-// current Task ID if possible. It first checks client.GetTaskID, and
-// if no TaskID is found, it checks ctx for a Task ID stored by this
-// package, and if still no Task ID is found, it checks ctx for a Task
-// ID received in metadata from an RPC call.
+// current Task and Event IDs if possible.
 func Invoke(ctx context.Context, method string, args, reply interface{},
 	cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+	eid := client.GetEventID()
 	tid := client.GetTaskID()
-	if tid == 0 {
-		// if ctx.Value(key{}) returns nil,
-		// tid will be the zero value - 0
-		tid, _ = ctx.Value(key{}).(int64)
-	}
-	if tid == 0 {
-		md, ok := metadata.FromContext(ctx)
-		if ok {
-			tidstrs := md[MetadataKey]
-			if len(tidstrs) > 0 {
-				// use ParseUint because Task IDs should never
-				// be negative (even though they're stored as
-				// int64s)
-				t, err := strconv.ParseUint(tidstrs[0], 10, 63)
-				if err != nil {
-					return fmt.Errorf("parse metadata for key %q (value %q): %v",
-						MetadataKey, tidstrs[0], err)
-				}
-				tid = int64(t)
-			}
-		}
-	}
 
+	var pairs []string
+	if eid != 0 {
+		pairs = append(pairs, EventIDMetadataKey, fmt.Sprint(eid))
+	}
 	if tid != 0 {
-		opt := grpc.Header(&metadata.MD{MetadataKey: []string{fmt.Sprint(tid)}})
-		// deep copy so we don't modify the caller's copy
-		opts = append([]grpc.CallOption(nil), opts...)
-		opts = append(opts, opt)
+		pairs = append(pairs, TaskIDMetadataKey, fmt.Sprint(tid))
 	}
-
+	if eid != 0 || tid != 0 {
+		md := metadata.Pairs(pairs...)
+		ctx = metadata.NewContext(ctx, md)
+	}
 	return grpc.Invoke(ctx, method, args, reply, cc, opts...)
 }
 
-// ExtractTaskID attempts to extract a Task ID from
-// ctx, and sets it as the calling goroutine's current
-// Task ID. It should be called at the beginning of
-// any gRPC handler. An error will be returned if a
-// Task ID was not found, or if it could not be parsed.
-func ExtractTaskID(ctx context.Context) error {
+// ExtractIDs attempts to extract a Task ID and an
+// Event ID from ctx, and sets it as the calling
+// goroutine's current IDs. It should be called at
+// the beginning of any gRPC handler. An error will
+// be returned if either ID was not found, or if it
+// could not be parsed. Note that if one ID was found
+// and parsed successfully, but the other was not,
+// neither will be set.
+func ExtractIDs(ctx context.Context) error {
 	md, ok := metadata.FromContext(ctx)
 	if !ok {
 		return fmt.Errorf("no metadata found in context")
 	}
 
-	tidstrs := md[MetadataKey]
-	switch len(tidstrs) {
-	case 0:
-		return fmt.Errorf("no Task ID found in metadata")
-	case 1:
-		// use ParseUint because Task IDs should never
-		// be negative (even though they're stored as
-		// int64s)
-		tid, err := strconv.ParseUint(tidstrs[0], 10, 63)
-		if err != nil {
-			return fmt.Errorf("parse metadata for key %q (value %q): %v",
-				MetadataKey, tidstrs[0], err)
-		}
-		client.SetTaskID(int64(tid))
-		return nil
-	default:
-		return fmt.Errorf("%v > 1 Task IDs found in metadata", len(tidstrs))
+	eid, err := getIDFromMetadata(md, EventIDMetadataKey, "Event ID")
+	if err != nil {
+		return err
 	}
+	tid, err := getIDFromMetadata(md, TaskIDMetadataKey, "Task ID")
+	if err != nil {
+		return err
+	}
+
+	client.SetEventID(eid)
+	client.SetTaskID(tid)
+	return nil
+}
+
+// get the given ID from md; name should be "Task ID" or "Event ID",
+// and getIDFromMetadata will produce the proper error messages that
+// can be returned directly without wrapping.
+func getIDFromMetadata(md metadata.MD, key, name string) (int64, error) {
+	m := make(map[string]string)
+	for k, v := range md {
+		for _, v := range v {
+			kk, vv, err := metadata.DecodeKeyValue(k, v)
+			if err != nil {
+				return 0, fmt.Errorf("malformed metadata: %v", err)
+			}
+			m[kk] = vv
+		}
+	}
+	str, ok := m[key]
+	if !ok {
+		return 0, fmt.Errorf("no %v found in metadata", name)
+	}
+	// use ParseUint because IDs should never be
+	// negative (even though they're stored as
+	// int64s)
+	id, err := strconv.ParseUint(str, 10, 63)
+	if err != nil {
+		return 0, fmt.Errorf("parse metadata for key %q (value %q): %v", key, str, err)
+	}
+	return int64(id), nil
 }

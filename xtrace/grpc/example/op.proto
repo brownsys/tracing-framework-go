@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package main;
+
+service Operator {
+  rpc PerformOp (Int) returns (Int) {}
+}
+
+message Int {
+  int64 num = 1;
+}
