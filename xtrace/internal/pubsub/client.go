@@ -112,7 +112,7 @@ func (c *Client) PublishStringBlock(topic, msg string) {
 type message struct {
 	topic   []byte
 	message []byte
-	wg      *sync.WaitGroup // used by Publish*Block to block until sent
+	wg      *sync.WaitGroup // used by PublishBlock to block until sent
 }
 
 func writeMessage(w io.Writer, m message) error {
