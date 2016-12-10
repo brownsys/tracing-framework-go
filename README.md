@@ -1,6 +1,9 @@
 tracing-framework-go
 ====================
 
+## Documentation
+The best way to learn how to use this project is to first read the `Causal Tracing for Go` PDF, and then to read each package's native Go documentation.
+
 ## Setup
 Add the `bin` directory to your `PATH` before whatever directory contains your system's `go` binary. `bin` contains `bin/go`, a script which uses the appropriate Go installation for your architecture (see the `go` directory). You can now use the `go` command as normal.
 
